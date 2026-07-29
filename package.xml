@@ -3,26 +3,22 @@
 <package format="3">
   <name>jamming_platform</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="jmgandarias@uma.es">juanma</maintainer>
-  <license>TODO: License declaration</license>
+  <description>Jamming experimental platform ros2 package</description>
+  <maintainer email="jmgandarias@uma.es">juanmaGandarias</maintainer>
+  <license>GNU GENERAL PUBLIC LICENSE (GPL-3.0)</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
-  <build_depend>dynamixel_ros2</build_depend>
-  <exec_depend>dynamixel_ros2</exec_depend>
-  <build_depend>dynamixel_sdk</build_depend>
-  <exec_depend>dynamixel_sdk</exec_depend>
-
   <export>
     <build_type>ament_cmake</build_type>
   </export>
 
-  <build_export_depend>dynamixel_sdk</build_export_depend>
-  <build_export_depend>rclcpp</build_export_depend>
-  <build_export_depend>std_msgs</build_export_depend>
-  <build_export_depend>geometry_msgs</build_export_depend>
+  <depend>dynamixel_ros2</depend>
+  <depend>dynamixel_sdk</depend>
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
 </package>
