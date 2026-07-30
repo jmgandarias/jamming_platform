@@ -136,10 +136,10 @@ void update_pressure_message(const double current_pressure)
   pressure_msg.variance = 0.0;
 }
 
-void publish_valve_states()
+void publish_valve_states(const bool rigid_on, const bool soft_on)
 {
-  rigid_valve_state_msg.data = (gpio_get_level(RIGID_VALVE_PIN) == VALVE_ON);
-  soft_valve_state_msg.data = (gpio_get_level(SOFT_VALVE_PIN) == VALVE_ON);
+  rigid_valve_state_msg.data = rigid_on;
+  soft_valve_state_msg.data = soft_on;
 
   RCSOFTCHECK(rcl_publish(
     &rigid_valve_state_publisher,
@@ -162,6 +162,9 @@ void TaskControl(void *argument)
     RCSOFTCHECK(rclc_executor_spin_some(&executor, EXECUTOR_SPIN_TIMEOUT_NS));
 
     // Run control loop at a fixed 100 Hz period.
+    const int previous_rigid_level = gpio_get_level(RIGID_VALVE_PIN);
+    const int previous_soft_level = gpio_get_level(SOFT_VALVE_PIN);
+
     const double current_pressure = read_current_pressure();
 
     if (current_pressure <= (GoalPressure - PressureThres)) {
@@ -177,7 +180,14 @@ void TaskControl(void *argument)
 
     update_pressure_message(current_pressure);
     RCSOFTCHECK(rcl_publish(&current_pressure_publisher, &pressure_msg, NULL));
-    publish_valve_states();
+
+    const int current_rigid_level = gpio_get_level(RIGID_VALVE_PIN);
+    const int current_soft_level = gpio_get_level(SOFT_VALVE_PIN);
+    if ((previous_rigid_level != current_rigid_level) || (previous_soft_level != current_soft_level)) {
+      publish_valve_states(
+        current_rigid_level == VALVE_ON,
+        current_soft_level == VALVE_ON);
+    }
 
     vTaskDelayUntil(&xLastWakeTime, xPeriod);
   }
