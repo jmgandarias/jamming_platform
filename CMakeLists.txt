@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(dynamixel_sdk REQUIRED)
 find_package(dynamixel_ros2 REQUIRED)
@@ -29,7 +30,10 @@ if(BUILD_TESTING)
 endif()
 
 add_executable(force_displacement_experiment src/force_displacement_experiment.cpp)
-ament_target_dependencies(force_displacement_experiment rclcpp std_msgs geometry_msgs dynamixel_sdk dynamixel_ros2)
+target_include_directories(force_displacement_experiment PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(force_displacement_experiment rclcpp std_msgs sensor_msgs geometry_msgs dynamixel_sdk dynamixel_ros2)
 
 if(DEFINED dynamixel_ros2_LIBRARIES AND dynamixel_ros2_LIBRARIES)
   target_link_libraries(force_displacement_experiment ${dynamixel_ros2_LIBRARIES})
@@ -38,5 +42,14 @@ elseif(TARGET dynamixel_ros2_lib)
 else()
   message(FATAL_ERROR "dynamixel_ros2 did not export a usable library for linking")
 endif()
+
+install(TARGETS force_displacement_experiment
+  DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY include/
+  DESTINATION include)
+
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config)
 
 ament_package()
