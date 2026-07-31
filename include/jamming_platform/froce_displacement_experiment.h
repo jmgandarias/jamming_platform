@@ -22,6 +22,19 @@
 #include <sys/types.h>
 #include <thread>
 
+constexpr double kScrewMmPerRevolution = 1.25;
+constexpr double kDegreesPerRevolution = 360.0;
+
+inline double deg_to_mm(double position_deg)
+{
+    return position_deg * (kScrewMmPerRevolution / kDegreesPerRevolution);
+}
+
+inline double mm_to_deg(double position_mm)
+{
+    return position_mm * (kDegreesPerRevolution / kScrewMmPerRevolution);
+}
+
 class ForceDisplacementExperimentNode : public rclcpp::Node
 {
 public:
@@ -38,10 +51,10 @@ public:
         this->declare_parameter("baudrate", 57600);
         this->declare_parameter("motor_id", 1);
 
-        // Motion/force limits for safety during the experiment.
-        this->declare_parameter("initial_position_deg", 180.0);
-        this->declare_parameter("position_tolerance_deg", 2.0);
-        this->declare_parameter("max_displacement_deg", 90.0);
+        // Motion/force limits for safety during the experiment (linear axis in mm).
+        this->declare_parameter("initial_position_mm", deg_to_mm(180.0));
+        this->declare_parameter("position_tolerance_mm", deg_to_mm(2.0));
+        this->declare_parameter("max_displacement_mm", deg_to_mm(90.0));
         this->declare_parameter("goal_velocity_rpm", -10.0);
         this->declare_parameter("max_force_n", 40.0);
 
@@ -126,10 +139,10 @@ public:
         return this->get_parameter(name).as_string();
     }
 
-    void publish_current_position(double position_deg)
+    void publish_current_position(double position_mm)
     {
         std_msgs::msg::Float64 msg;
-        msg.data = position_deg;
+        msg.data = position_mm;
         current_position_publisher_->publish(msg);
     }
 
@@ -147,11 +160,11 @@ public:
         double goal_pressure_kpa,
         double elapsed_s,
         double pressure_kpa,
-        double position_deg,
+        double position_mm,
         double force_n)
     {
         std_msgs::msg::Float64MultiArray msg;
-        msg.data = {elapsed_s, pressure_kpa, position_deg, force_n};
+        msg.data = {elapsed_s, pressure_kpa, position_mm, force_n};
         experiment_data_publisher_->publish(msg);
 
         log_experiment_sample_csv(
@@ -159,7 +172,7 @@ public:
             rep,
             goal_pressure_kpa,
             pressure_kpa,
-            position_deg,
+            position_mm,
             force_n,
             elapsed_s);
     }
@@ -309,8 +322,8 @@ private:
 inline bool wait_until_position(
     const std::shared_ptr<ForceDisplacementExperimentNode> &node,
     dynamixelMotor &motor,
-    double target_deg,
-    double tolerance_deg,
+    double target_mm,
+    double tolerance_mm,
     double timeout_s)
 {
     const auto t0 = node->now();
@@ -318,10 +331,11 @@ inline bool wait_until_position(
     while (rclcpp::ok())
     {
         rclcpp::spin_some(node);
-        const double current_pos = motor.getPresentPosition();
-        node->publish_current_position(current_pos);
+        const double current_pos_deg = motor.getPresentPosition();
+        const double current_pos_mm = deg_to_mm(current_pos_deg);
+        node->publish_current_position(current_pos_mm);
 
-        if (std::fabs(current_pos - target_deg) <= tolerance_deg)
+        if (std::fabs(current_pos_mm - target_mm) <= tolerance_mm)
         {
             return true;
         }

@@ -7,9 +7,9 @@ force_displacement_experiment:
     baudrate: 57600
     motor_id: 1
 
-    initial_position_deg: 180.0
-    position_tolerance_deg: 2.0
-    max_displacement_deg: 90.0
+    initial_position_mm: 0.625
+    position_tolerance_mm: 0.006944444444
+    max_displacement_mm: 0.3125
     goal_velocity_rpm: -10.0
     max_force_n: 40.0
 

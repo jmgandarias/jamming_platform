@@ -36,9 +36,10 @@ int main(int argc, char *argv[])
   const int baudrate = node->get_param_int("baudrate");
   const int motor_id = node->get_param_int("motor_id");
 
-  const double initial_position_deg = node->get_param_double("initial_position_deg");
-  const double position_tolerance_deg = node->get_param_double("position_tolerance_deg");
-  const double max_displacement_deg = node->get_param_double("max_displacement_deg");
+  const double initial_position_mm = node->get_param_double("initial_position_mm");
+  const double position_tolerance_mm = node->get_param_double("position_tolerance_mm");
+  const double max_displacement_mm = node->get_param_double("max_displacement_mm");
+  const double initial_position_deg = mm_to_deg(initial_position_mm);
   const double goal_velocity_rpm = node->get_param_double("goal_velocity_rpm");
   const double max_force_n = node->get_param_double("max_force_n");
 
@@ -84,7 +85,7 @@ int main(int argc, char *argv[])
   motor.setControlTable();
 
   motor.setTorqueState(false);
-  motor.setOperatingMode(dynamixelMotor::POSITION_CONTROL_MODE);
+  motor.setOperatingMode(dynamixelMotor::EXTENDED_POSITION_CONTROL_MODE);
   motor.setTorqueState(true);
 
   // 5) Wait for valid sensor data before starting.
@@ -106,7 +107,7 @@ int main(int argc, char *argv[])
   const auto experiment_t0 = node->now();
 
   // 6) Main loop: pressure sweep and repetitions at each level.
-    int n_exp = 0;
+  int n_exp = 0;
   for (double goal_pressure_kpa = pressure_start_kpa;
        rclcpp::ok() && goal_pressure_kpa >= pressure_end_kpa;
        goal_pressure_kpa += pressure_step_kpa)
@@ -120,17 +121,17 @@ int main(int argc, char *argv[])
           rep + 1,
           repetitions_per_pressure);
 
-      // 6.1) Move to initial position in position control mode.
+      // 6.1) Move to initial position in extended position control mode.
       motor.setTorqueState(false);
-      motor.setOperatingMode(dynamixelMotor::POSITION_CONTROL_MODE);
+      motor.setOperatingMode(dynamixelMotor::EXTENDED_POSITION_CONTROL_MODE);
       motor.setTorqueState(true);
       motor.setGoalPosition(initial_position_deg);
 
       const bool reached_initial = wait_until_position(
           node,
           motor,
-          initial_position_deg,
-          position_tolerance_deg,
+          initial_position_mm,
+          position_tolerance_mm,
           move_timeout_s);
 
       if (!reached_initial)
@@ -162,17 +163,18 @@ int main(int argc, char *argv[])
         rclcpp::spin_some(node);
 
         const double position_deg = motor.getPresentPosition();
-        const double displacement_deg = std::fabs(position_deg - initial_position_deg);
+        const double position_mm = deg_to_mm(position_deg);
+        const double displacement_mm = std::fabs(position_mm - initial_position_mm);
         const double pressure_kpa = node->get_last_pressure().fluid_pressure / 1000.0;
         const double force_n = node->get_last_wrench().wrench.force.z;
         const double elapsed_s = (node->now() - experiment_t0).seconds();
 
-        node->publish_current_position(position_deg);
-        node->publish_experiment_sample(n_exp, rep + 1, goal_pressure_kpa, elapsed_s, pressure_kpa, position_deg, force_n);
+        node->publish_current_position(position_mm);
+        node->publish_experiment_sample(n_exp, rep + 1, goal_pressure_kpa, elapsed_s, pressure_kpa, position_mm, force_n);
         node->publish_goal_pressure_kpa(goal_pressure_kpa);
 
         const bool force_within_tolerance = std::fabs(force_n) <= max_force_n;
-        const bool position_within_tolerance = displacement_deg <= max_displacement_deg;
+        const bool position_within_tolerance = displacement_mm <= max_displacement_mm;
 
         if (!force_within_tolerance || !position_within_tolerance)
         {
@@ -194,15 +196,15 @@ int main(int argc, char *argv[])
 
       // 6.5) Return to initial position for the next repetition.
       motor.setTorqueState(false);
-      motor.setOperatingMode(dynamixelMotor::POSITION_CONTROL_MODE);
+      motor.setOperatingMode(dynamixelMotor::EXTENDED_POSITION_CONTROL_MODE);
       motor.setTorqueState(true);
       motor.setGoalPosition(initial_position_deg);
 
       (void)wait_until_position(
           node,
           motor,
-          initial_position_deg,
-          position_tolerance_deg,
+          initial_position_mm,
+          position_tolerance_mm,
           move_timeout_s);
 
       std::this_thread::sleep_for(std::chrono::duration<double>(settle_time_s));
