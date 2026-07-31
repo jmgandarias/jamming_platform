@@ -16,6 +16,8 @@ ROS 2 package to run force-displacement experiments on a jamming platform, with:
 - ESP32 firmware (Arduino):
 	- [firmware/pressure_control/pressure_control.ino](firmware/pressure_control/pressure_control.ino)
 	- [firmware/state_transition_analysis/state_transition_analysis.ino](firmware/state_transition_analysis/state_transition_analysis.ino)
+- Host-side serial capture utility:
+	- [scripts/capture_state_transition.py](scripts/capture_state_transition.py)
 
 ## 2. What This Package Does
 
@@ -36,6 +38,8 @@ In addition, every sample published to experiment_data is also written to a CSV 
 
 - ROS 2 installed and sourced correctly.
 - colcon.
+- Python 3.
+- pyserial (for serial capture script).
 - Package dependencies declared in [package.xml](package.xml):
 	- rclcpp
 	- std_msgs
@@ -112,6 +116,47 @@ Usage:
 2. Open Serial Monitor at 115200.
 3. Press Enter to start (the firmware waits for '\n').
 4. Capture serial output for offline analysis.
+
+### 5.3 Python serial capture script (recommended)
+
+File: [scripts/capture_state_transition.py](scripts/capture_state_transition.py)
+
+Purpose:
+
+- Sends the start key (newline) to the firmware.
+- Reads serial samples continuously.
+- Writes CSV with: experiment, time, pressure.
+- Uses fixed sampling rate at 10 kHz to reconstruct time.
+
+Install dependency:
+
+```bash
+python3 -m pip install pyserial
+```
+
+Run example:
+
+```bash
+cd /path/to/YOUR_WS
+python3 src/jamming_platform/scripts/capture_state_transition.py --port /dev/ttyUSB0
+```
+
+Useful options:
+
+- --num-experiments: stop automatically after N experiments.
+- --samples-per-transition: set sample count per transition (default 1000).
+- --transitions-per-experiment: transitions per experiment (default 2).
+- --output: output CSV file path.
+- --slope and --offset: convert ADC to calibrated pressure.
+
+Example with automatic stop and explicit output:
+
+```bash
+python3 src/jamming_platform/scripts/capture_state_transition.py \
+	--port /dev/ttyUSB0 \
+	--num-experiments 10 \
+	--output state_transition_run.csv
+```
 
 ## 6. Run the Full Experiment
 
@@ -261,6 +306,12 @@ View linear position:
 
 ```bash
 ros2 topic echo /current_position
+```
+
+Capture state transition data to CSV:
+
+```bash
+python3 src/jamming_platform/scripts/capture_state_transition.py --port /dev/ttyUSB0
 ```
 
 ## 11. Troubleshooting
