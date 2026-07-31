@@ -106,6 +106,7 @@ int main(int argc, char *argv[])
   const auto experiment_t0 = node->now();
 
   // 6) Main loop: pressure sweep and repetitions at each level.
+    int n_exp = 0;
   for (double goal_pressure_kpa = pressure_start_kpa;
        rclcpp::ok() && goal_pressure_kpa >= pressure_end_kpa;
        goal_pressure_kpa += pressure_step_kpa)
@@ -167,7 +168,7 @@ int main(int argc, char *argv[])
         const double elapsed_s = (node->now() - experiment_t0).seconds();
 
         node->publish_current_position(position_deg);
-        node->publish_experiment_sample(elapsed_s, pressure_kpa, position_deg, force_n);
+        node->publish_experiment_sample(n_exp, rep + 1, goal_pressure_kpa, elapsed_s, pressure_kpa, position_deg, force_n);
         node->publish_goal_pressure_kpa(goal_pressure_kpa);
 
         const bool force_within_tolerance = std::fabs(force_n) <= max_force_n;
@@ -206,6 +207,8 @@ int main(int argc, char *argv[])
 
       std::this_thread::sleep_for(std::chrono::duration<double>(settle_time_s));
     }
+
+    ++n_exp;
   }
 
   // 7) Safe shutdown.

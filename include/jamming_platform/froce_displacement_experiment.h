@@ -10,9 +10,16 @@
 #include "std_msgs/msg/float64_multi_array.hpp"
 
 #include <chrono>
+#include <cerrno>
 #include <cmath>
+#include <ctime>
+#include <fstream>
 #include <functional>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
 
 class ForceDisplacementExperimentNode : public rclcpp::Node
@@ -45,6 +52,9 @@ public:
         this->declare_parameter("pressure_tolerance_kpa", 2.0);
         this->declare_parameter("repetitions_per_pressure", 10);
 
+        // Output folder for CSV experiment logs.
+        this->declare_parameter("results_directory", std::string("experiemnt_results"));
+
         // Settling times and timeouts to avoid blocking conditions.
         this->declare_parameter("settle_time_s", 2.0);
         this->declare_parameter("pressure_settle_timeout_s", 5.0);
@@ -63,6 +73,17 @@ public:
         current_position_publisher_ = this->create_publisher<std_msgs::msg::Float64>("current_position", 10);
         goal_pressure_publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>("goal_pressure", 10);
         experiment_data_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("experiment_data", 10);
+
+        initialize_csv_output();
+    }
+
+    ~ForceDisplacementExperimentNode()
+    {
+        if (csv_file_.is_open())
+        {
+            csv_file_.flush();
+            csv_file_.close();
+        }
     }
 
     double get_loop_rate()
@@ -121,6 +142,9 @@ public:
     }
 
     void publish_experiment_sample(
+        int n_exp,
+        int rep,
+        double goal_pressure_kpa,
         double elapsed_s,
         double pressure_kpa,
         double position_deg,
@@ -129,9 +153,126 @@ public:
         std_msgs::msg::Float64MultiArray msg;
         msg.data = {elapsed_s, pressure_kpa, position_deg, force_n};
         experiment_data_publisher_->publish(msg);
+
+        log_experiment_sample_csv(
+            n_exp,
+            rep,
+            goal_pressure_kpa,
+            pressure_kpa,
+            position_deg,
+            force_n,
+            elapsed_s);
     }
 
 private:
+    static bool ensure_directory_exists(const std::string &dir_path)
+    {
+        if (dir_path.empty())
+        {
+            return false;
+        }
+
+        std::string current_path;
+        if (!dir_path.empty() && dir_path.front() == '/')
+        {
+            current_path = "/";
+        }
+
+        std::stringstream ss(dir_path);
+        std::string segment;
+        while (std::getline(ss, segment, '/'))
+        {
+            if (segment.empty())
+            {
+                continue;
+            }
+
+            if (!current_path.empty() && current_path.back() != '/')
+            {
+                current_path += "/";
+            }
+            current_path += segment;
+
+            struct stat info
+            {
+            };
+            if (stat(current_path.c_str(), &info) == 0)
+            {
+                if (!S_ISDIR(info.st_mode))
+                {
+                    return false;
+                }
+                continue;
+            }
+
+            if (mkdir(current_path.c_str(), 0755) != 0 && errno != EEXIST)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void initialize_csv_output()
+    {
+        const std::string results_directory = get_param_string("results_directory");
+        if (!ensure_directory_exists(results_directory))
+        {
+            RCLCPP_WARN(this->get_logger(), "Could not create results directory: %s", results_directory.c_str());
+            return;
+        }
+
+        const auto now = std::chrono::system_clock::now();
+        const std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm local_tm;
+        localtime_r(&now_time, &local_tm);
+
+        std::ostringstream output_path;
+        output_path << results_directory << "/force_displacement_" << std::put_time(&local_tm, "%Y%m%d_%H%M%S") << ".csv";
+        csv_output_path_ = output_path.str();
+
+        csv_file_.open(csv_output_path_, std::ios::out);
+        if (!csv_file_.is_open())
+        {
+            RCLCPP_WARN(this->get_logger(), "Could not open CSV file for writing: %s", csv_output_path_.c_str());
+            return;
+        }
+
+        csv_file_ << "n_exp;rep;goal_pressure;current_pressure;position;force;time\n";
+        csv_enabled_ = true;
+        RCLCPP_INFO(this->get_logger(), "Experiment CSV output enabled: %s", csv_output_path_.c_str());
+    }
+
+    void log_experiment_sample_csv(
+        int n_exp,
+        int rep,
+        double goal_pressure_kpa,
+        double current_pressure_kpa,
+        double position_deg,
+        double force_n,
+        double elapsed_s)
+    {
+        if (!csv_enabled_)
+        {
+            return;
+        }
+
+        csv_file_ << n_exp << ';'
+                  << rep << ';'
+                  << goal_pressure_kpa << ';'
+                  << current_pressure_kpa << ';'
+                  << position_deg << ';'
+                  << force_n << ';'
+                  << elapsed_s << '\n';
+
+        if (!csv_file_ && !csv_write_error_logged_)
+        {
+            RCLCPP_WARN(this->get_logger(), "Failed writing experiment sample to CSV: %s", csv_output_path_.c_str());
+            csv_write_error_logged_ = true;
+        }
+    }
+
     // Stores the latest available force measurement.
     void wrench_callback(const geometry_msgs::msg::WrenchStamped &msg)
     {
@@ -154,6 +295,11 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr current_position_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr goal_pressure_publisher_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr experiment_data_publisher_;
+
+    std::ofstream csv_file_;
+    std::string csv_output_path_;
+    bool csv_enabled_{false};
+    bool csv_write_error_logged_{false};
 
     rclcpp::Subscription<sensor_msgs::msg::FluidPressure>::SharedPtr pressure_subscription_;
     rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_subscription_;
